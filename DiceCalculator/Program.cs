@@ -10,39 +10,34 @@ namespace DiceCalculator
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Arguments: space separated dice amounts and names (ex: \"2d20 1d6 1d4\")\n" + 
-                                  "Optional: -c:n, where n equals desired value. Specify multiple -c:n's to find multiple desired values.");
+                Console.WriteLine("Usage: DiceCalculator dice [modifiers] [-s:sum | -q]");
+                Console.WriteLine("Arguments:\n" +
+                                  "  dice      -- Space separated dice amounts and types (e.g. 2d20 1d6 1d4).\n" +
+                                  "  modifiers -- Optional. Space separated modifiers. '+' or '-' must be included\n" +
+                                  "               directly before value (e.g. +5 -2 +1).\n" +
+                                  "  -s:sum    -- Optional. Calculate chance of rolling sum or higher. Multiple -s\n" +
+                                  "               arguments can be provided. Cannot be used with Quick mode.\n" +
+                                  "  -q        -- Optional. Quick mode. Doesn't generate table; only calculates\n" +
+                                  "               total combinations, average sum, standard deviation, and range\n" +
+                                  "               within one standard deviation.\n"
+                                  );
+                Console.WriteLine("Arguments can be provided in any order.");
+                Console.WriteLine("Example: DiceCalculator 2d4 +2 1d6 +1 -c:10 -c:5");
                 Environment.Exit(0);
             }
 
-            List<string> arguments = new List<string>(args);
-
-            // Parse arguments by adding dice to string and desired values to list, removing arguments as they are processed until there are none left
-            string diceString = string.Empty;
-            List<int> desiredValues = new List<int>();
-            while (arguments.Count > 0)
+            // Parse arguments
+            string diceString;
+            List<int> desiredSums;
+            bool quickMode;
+            int totalModifier;
+            ParseArguments(args, out diceString, out desiredSums, out quickMode, out totalModifier);
+            
+            if (desiredSums.Count > 0 && quickMode)
             {
-                if (arguments[0].StartsWith("-c:"))
-                {
-                    int value;
-                    if (int.TryParse(arguments[0].Substring(3), out value))
-                    {
-                        desiredValues.Add(value);
-                    }
-                    else
-                    {
-                        Console.WriteLine("Could not parse desired value \"" + arguments[0] + "\". Skipping...");
-                    }
-                    arguments.RemoveAt(0);
-                }
-                else
-                {
-                    diceString += arguments[0] + " ";
-                    arguments.RemoveAt(0);
-                }
+                Console.WriteLine("ERROR: Cannot use Quick mode and provide sum chances at the same time.");
+                Environment.Exit(1);
             }
-            diceString = diceString.Trim();
-            desiredValues.Sort();
 
             // Create dice array
             Die[] diceArray = StringToDiceArray(diceString);
@@ -50,28 +45,102 @@ namespace DiceCalculator
             if (diceArray.Length == 0)
             {
                 Console.WriteLine("ERROR: Could not parse any dice from arguments. Exiting...");
-                Environment.Exit(0);
+                Environment.Exit(1);
             }
             diceArray = diceArray.OrderBy(d => d.NumberOfSides).ToArray();
 
-            // Calculate sums, combinations, and average
-            double average;
-            int combinations;
-            Dictionary<int, int> sums;
-            DiceMath.RunCalculations(diceArray, out sums, out combinations, out average);
-
+            // Calculate combinations, average, and standard deviation
+            int combinations = DiceMath.CalculateNumberOfCombinations(diceArray);
+            double average = DiceMath.CalculateAverage(diceArray, totalModifier);
+            double standardDeviation = DiceMath.CalculateStandardDeviation(diceArray);
+            
             // Print results
-            Console.WriteLine("Dice Rolled: " + DiceArrayToString(diceArray));
-            Console.WriteLine("Combinations: " + combinations);
-            Console.WriteLine("Average Sum: " + average + "\n");
-            PrintSums(sums, combinations);
+            Console.WriteLine("Dice Rolled: {0}", DiceArrayToString(diceArray));
+            Console.WriteLine("Modifier: {0}", totalModifier);
+            Console.WriteLine("Combinations: {0}", combinations);
+            Console.WriteLine("Average Sum: {0}", average);
+            Console.WriteLine("Standard Deviation: {0}", standardDeviation);
+            Console.WriteLine("Range within 1 Standard Deviation: {0} - {1}\n", (average - standardDeviation), (average + standardDeviation));
 
-            // Print chances of desired values
-            Console.WriteLine();
-            for (int i = 0; i < desiredValues.Count; i++)
+            if (!quickMode)
             {
-                Console.WriteLine("Chance of rolling sum of " + desiredValues[i] + " or higher: " + CalculateChance(sums, combinations, desiredValues[i]).ToString("F2") + "%");
+                Dictionary<int, int> sumsValues = DiceMath.CalculateSums(diceArray, totalModifier);
+                PrintSums(sumsValues, combinations);
+
+                // Print chances of desired sums
+                Console.WriteLine();
+                for (int i = 0; i < desiredSums.Count; i++)
+                {
+                    Console.WriteLine("Chance of rolling sum of {0} or higher: {1}%", desiredSums[i], CalculateChanceForSum(sumsValues, combinations, desiredSums[i]).ToString("F2"));
+                }
             }
+        }
+
+        // Parse arguments by determining argument type, removing arguments as they are processed until there are none left
+        private static void ParseArguments(string[] args, out string diceString, out List<int> desiredSums, out bool quickMode, out int totalModifier)
+        {
+            List<string> arguments = new List<string>(args);
+            
+            diceString = string.Empty;
+            desiredSums = new List<int>();
+            quickMode = false;
+            totalModifier = 0;
+
+            while (arguments.Count > 0)
+            {
+                if (arguments[0].StartsWith("-s:"))
+                {
+                    int value;
+                    if (int.TryParse(arguments[0].Substring(3), out value))
+                    {
+                        desiredSums.Add(value);
+                    }
+                    else
+                    {
+                        Console.WriteLine("ERROR: Could not parse desired sum '{0}'", arguments[0].Substring(3));
+                        Environment.Exit(1);
+                    }
+                }
+                else if (arguments[0] == "-q")
+                {
+                    quickMode = true;
+                }
+                else if (arguments[0].StartsWith("-"))
+                {
+                    int value;
+                    if (int.TryParse(arguments[0], out value))
+                    {
+                        totalModifier += value;
+                    }
+                    else
+                    {
+                        Console.WriteLine("ERROR: Could not parse value '{0}'", arguments[0]);
+                        Environment.Exit(1);
+                    }
+                }
+                else if (arguments[0].StartsWith("+"))
+                {
+                    int value;
+                    if (int.TryParse(arguments[0].Substring(1), out value))
+                    {
+                        totalModifier += value;
+                    }
+                    else
+                    {
+                        Console.WriteLine("ERROR: Could not parse value '{0}'", arguments[0]);
+                        Environment.Exit(1);
+                    }
+                }
+                else
+                {
+                    diceString += arguments[0] + " ";
+                }
+
+                arguments.RemoveAt(0);
+            }
+
+            diceString = diceString.Trim();
+            desiredSums.Sort();
         }
 
         // Parse string of space separated dice to array of individual dice
@@ -79,19 +148,21 @@ namespace DiceCalculator
         {
             List<Die> diceArray = new List<Die>();
 
-            string[] diceSplit = diceString.Split(' '); // Each element of diceSplit will be a separate dice amounts, e.g. { 2d20, 1d6, 1d4 }
+            // Split diceString into separate dice amounts, e.g. { 2d20, 1d6, 1d4 }
+            string[] diceSplit = diceString.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
             for (int i = 0; i < diceSplit.Length; i++)
             {
-                // Convert dice amount + name into individual dice, e.g. 2d20 = { 1d20, 1d20 }, 5d4 = { 1d4, 1d4, 1d4, 1d4, 1d4 }
+                // Convert dice amount + type into individual dice, e.g. 2d20 = { 1d20, 1d20 }, 5d4 = { 1d4, 1d4, 1d4, 1d4, 1d4 }
                 string[] pair = diceSplit[i].Split('d');
                 int amount = 0;
                 int type = 0;
 
-                if (pair.Length < 2 || !int.TryParse(pair[0], out amount) || !int.TryParse(pair[1], out type)) // If incorrect format, or either part can't be parsed, skip
+                // If incorrect format, or either part can't be parsed, show error and exit
+                if (pair.Length != 2 || !int.TryParse(pair[0], out amount) || !int.TryParse(pair[1], out type))
                 {
-                    Console.WriteLine("Could not parse desired value \"" + diceSplit[i] + "\". Skipping...");
-                    continue;
+                    Console.WriteLine("ERROR: Could not parse value '{0}'", diceSplit[i]);
+                    Environment.Exit(1);
                 }
 
                 for (int j = 0; j < amount; j++)
@@ -103,7 +174,7 @@ namespace DiceCalculator
             return diceArray.ToArray();
         }
 
-        // Convert array of dice into a string of space separated dice amounts + names
+        // Convert array of dice into a string of space separated dice amounts + types
         // Will also simplify dice if original dice string was unsimplified, e.g. 2d6 1d6 = 3d6
         private static string DiceArrayToString(Die[] diceArray)
         {
@@ -123,7 +194,7 @@ namespace DiceCalculator
                 }
             }
 
-            foreach (int die in dice.Keys.ToArray())
+            foreach (int die in dice.Keys)
             {
                 diceString += dice[die] + "d" + die + " ";
             }
@@ -132,16 +203,15 @@ namespace DiceCalculator
         }
 
         // Calculate chance for a specific sum
-        private static double CalculateChance(Dictionary<int, int> sums, int combinations, int value)
+        private static double CalculateChanceForSum(Dictionary<int, int> sums, double combinations, int value)
         {
-            double combos = combinations;
             double chance = 0;
 
-            foreach (int sum in sums.Keys.ToArray())
+            foreach (int sum in sums.Keys)
             {
                 if (sum >= value)
                 {
-                    chance += (sums[sum] / combos) * 100;
+                    chance += (sums[sum] / combinations) * 100;
                 }
             }
 
@@ -159,7 +229,7 @@ namespace DiceCalculator
             int longestCountLength = 5;
 
             // Find longest string length for sum and count
-            foreach (int sum in sums.Keys.ToArray())
+            foreach (int sum in sums.Keys)
             {
                 if (sum.ToString().Length > longestSumLength)
                 {
@@ -174,7 +244,7 @@ namespace DiceCalculator
             Console.WriteLine("| " + "Sum".PadLeft(longestSumLength) + " | " + "Count".PadLeft(longestCountLength) + " |  Percent |");
             Console.WriteLine("+-" + "".PadLeft(longestSumLength, '-') + "-+-" + "".PadLeft(longestCountLength, '-') + "-+----------+");
 
-            foreach (int sum in sums.Keys.ToArray())
+            foreach (int sum in sums.Keys)
             {
                 double percent = (sums[sum] / combos) * 100;
                 Console.Write("| " + sum.ToString().PadLeft(longestSumLength) + " | " + sums[sum].ToString().PadLeft(longestCountLength) + " |  " + percent.ToString("F2").PadLeft(6) + "% |\n");
