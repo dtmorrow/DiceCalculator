@@ -40,7 +40,7 @@ namespace DiceCalculator
             }
 
             // Create dice array
-            Die[] diceArray = StringToDiceArray(diceString);
+            Die[] diceArray = DiceMath.StringToDiceArray(diceString);
 
             if (diceArray.Length == 0)
             {
@@ -55,7 +55,7 @@ namespace DiceCalculator
             double standardDeviation = DiceMath.CalculateStandardDeviation(diceArray);
             
             // Print results
-            Console.WriteLine("Dice Rolled: {0}", DiceArrayToString(diceArray));
+            Console.WriteLine("Dice Rolled: {0}", DiceMath.DiceArrayToString(diceArray));
             Console.WriteLine("Modifier: {0}", totalModifier);
             Console.WriteLine("Combinations: {0}", combinations);
             Console.WriteLine("Average Sum: {0}", average);
@@ -71,7 +71,7 @@ namespace DiceCalculator
                 Console.WriteLine();
                 for (int i = 0; i < desiredSums.Count; i++)
                 {
-                    Console.WriteLine("Chance of rolling sum of {0} or higher: {1}%", desiredSums[i], CalculateChanceForSum(sumsValues, combinations, desiredSums[i]).ToString("F2"));
+                    Console.WriteLine("Chance of rolling sum of {0} or higher: {1}%", desiredSums[i], DiceMath.CalculateChanceForSum(sumsValues, combinations, desiredSums[i]).ToString("F2"));
                 }
             }
         }
@@ -143,87 +143,10 @@ namespace DiceCalculator
             desiredSums.Sort();
         }
 
-        // Parse string of space separated dice to array of individual dice
-        private static Die[] StringToDiceArray(string diceString)
-        {
-            List<Die> diceArray = new List<Die>();
-
-            // Split diceString into separate dice amounts, e.g. { 2d20, 1d6, 1d4 }
-            string[] diceSplit = diceString.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-
-            for (int i = 0; i < diceSplit.Length; i++)
-            {
-                // Convert dice amount + type into individual dice, e.g. 2d20 = { 1d20, 1d20 }, 5d4 = { 1d4, 1d4, 1d4, 1d4, 1d4 }
-                string[] pair = diceSplit[i].Split('d');
-                int amount = 0;
-                int type = 0;
-
-                // If incorrect format, or either part can't be parsed, show error and exit
-                if (pair.Length != 2 || !int.TryParse(pair[0], out amount) || !int.TryParse(pair[1], out type))
-                {
-                    Console.WriteLine("ERROR: Could not parse value '{0}'", diceSplit[i]);
-                    Environment.Exit(1);
-                }
-
-                for (int j = 0; j < amount; j++)
-                {
-                    diceArray.Add(new Die() { NumberOfSides = type, CurrentShowingSide = 1 });
-                }
-            }
-
-            return diceArray.ToArray();
-        }
-
-        // Convert array of dice into a string of space separated dice amounts + types
-        // Will also simplify dice if original dice string was unsimplified, e.g. 2d6 1d6 = 3d6
-        private static string DiceArrayToString(Die[] diceArray)
-        {
-            string diceString = string.Empty;
-            Dictionary<int, int> dice = new Dictionary<int, int>(); // Key: Type of die, Value: Amount of that type
-
-            for (int i = 0; i < diceArray.Length; i++)
-            {
-                // If dice type is already in dictionary, increment amount; otherwise, add dice type to dictionary with amount of 1
-                if (dice.ContainsKey(diceArray[i].NumberOfSides))
-                {
-                    dice[diceArray[i].NumberOfSides]++;
-                }
-                else
-                {
-                    dice.Add(diceArray[i].NumberOfSides, 1);
-                }
-            }
-
-            foreach (int die in dice.Keys)
-            {
-                diceString += dice[die] + "d" + die + " ";
-            }
-
-            return diceString.Trim();
-        }
-
-        // Calculate chance for a specific sum
-        private static double CalculateChanceForSum(Dictionary<int, int> sums, double combinations, int value)
-        {
-            double chance = 0;
-
-            foreach (int sum in sums.Keys)
-            {
-                if (sum >= value)
-                {
-                    chance += (sums[sum] / combinations) * 100;
-                }
-            }
-
-            return chance;
-        }
-
         // Print sums into table with percentages
         private static void PrintSums(Dictionary<int, int> sums, int combinations)
         {
-            double combos = combinations;
-            int[] keys = sums.Keys.ToArray();
-            int[] values = sums.Values.ToArray();
+            double combos = combinations; // Convert combinations to double so we don't have to cast every time
 
             int longestSumLength = 3;
             int longestCountLength = 5;

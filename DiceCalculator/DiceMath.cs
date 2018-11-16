@@ -6,7 +6,73 @@ namespace DiceCalculator
 {
     public static class DiceMath
     {
-        // The formulas for the average and standard deviation of a single die were taken from this helpful article: http://www.d8uv.org/dice-to-distribution/
+        // The formulas for the average and standard deviation of a single die were derived from this helpful article: http://www.d8uv.org/dice-to-distribution/
+
+        /// <summary>
+        /// Converts a string of space separated dice to an array of Die objects.
+        /// </summary>
+        /// <param name="diceString">String of space separated dice</param>
+        /// <returns>Parsed array of Die objects</returns>
+        public static Die[] StringToDiceArray(string diceString)
+        {
+            List<Die> diceArray = new List<Die>();
+
+            // Split diceString into separate dice amounts, e.g. { 2d20, 1d6, 1d4 }
+            string[] diceSplit = diceString.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+            for (int i = 0; i < diceSplit.Length; i++)
+            {
+                // Convert dice amount + type into individual dice, e.g. 2d20 = { 1d20, 1d20 }, 5d4 = { 1d4, 1d4, 1d4, 1d4, 1d4 }
+                string[] pair = diceSplit[i].Split('d');
+                int amount = 0;
+                int type = 0;
+
+                // If incorrect format, or either part can't be parsed, show error and exit
+                if (pair.Length != 2 || !int.TryParse(pair[0], out amount) || !int.TryParse(pair[1], out type))
+                {
+                    Console.WriteLine("ERROR: Could not parse value '{0}'", diceSplit[i]);
+                    Environment.Exit(1);
+                }
+
+                for (int j = 0; j < amount; j++)
+                {
+                    diceArray.Add(new Die() { NumberOfSides = type, CurrentShowingSide = 1 });
+                }
+            }
+
+            return diceArray.ToArray();
+        }
+
+        /// <summary>
+        /// Converts an array of dice into a string of space separated dice amounts + types.
+        /// </summary>
+        /// <param name="diceArray">An array of Die objects to convert to a string.</param>
+        /// <returns>A string of space separated dice amounts + types.</returns>
+        public static string DiceArrayToString(Die[] diceArray)
+        {
+            string diceString = string.Empty;
+            Dictionary<int, int> dice = new Dictionary<int, int>(); // Key: Type of die, Value: Amount of that type
+
+            for (int i = 0; i < diceArray.Length; i++)
+            {
+                // If dice type is already in dictionary, increment amount; otherwise, add dice type to dictionary with amount of 1
+                if (dice.ContainsKey(diceArray[i].NumberOfSides))
+                {
+                    dice[diceArray[i].NumberOfSides]++;
+                }
+                else
+                {
+                    dice.Add(diceArray[i].NumberOfSides, 1);
+                }
+            }
+
+            foreach (int die in dice.Keys)
+            {
+                diceString += dice[die] + "d" + die + " ";
+            }
+
+            return diceString.Trim();
+        }
 
         /// <summary>
         /// Calculates the average sum for an array of dice.
@@ -18,7 +84,7 @@ namespace DiceCalculator
         {
             // Average of Single Die = (NumberOfSides + 1) / 2
             // Sum together for total average
-            return dice.Sum(die => die.NumberOfSides + 1) / 2.0 + modifier;
+            return (dice.Sum(die => die.NumberOfSides) + dice.Length) / 2.0 + modifier;
         }
 
         /// <summary>
@@ -31,7 +97,7 @@ namespace DiceCalculator
             // Standard Deviation of Single Die = sqrt(NumberOfSides * NumberOfSides - 1) / (2 * sqrt(3))
             // Can simplify this to StdDev = sqrt((NumberOfSides * NumberOfSides - 1) / 12)
             // Sum together for total standard deviation
-            return Math.Sqrt(dice.Sum(die => die.NumberOfSides * die.NumberOfSides - 1) / 12.0);
+            return Math.Sqrt((dice.Sum(die => die.NumberOfSides * die.NumberOfSides) - dice.Length) / 12.0);
         }
 
         /// <summary>
@@ -52,7 +118,7 @@ namespace DiceCalculator
         /// </summary>
         /// <param name="dice">An array of Die objects to calculate the sums for.</param>
         /// <param name="modifier">The amount to add or subtract from a sum.</param>
-        /// <returns>Dictionary that uses the sum as the Key and the count of how many times that sum has been rolled for the Value.</returns>
+        /// <returns>Dictionary of sums that uses the sum as the Key and the count of how many times that sum has been rolled for the Value.</returns>
         public static Dictionary<int, int> CalculateSums(Die[] dice, int modifier)
         {
             // Dictionary that uses the sum as the key, and how many times that sum has been rolled for the value
@@ -61,10 +127,10 @@ namespace DiceCalculator
             // While we have more combinations to sum, add together current top sides of dice, and change next dice sides to next side (increment side). Then, add together final sides (without incrementing afterwards)
             while (NotFinished(dice))
             {
-                Calculate(dice, sums);
+                CalculateSum(dice, sums);
                 IncrementSides(dice);
             }
-            Calculate(dice, sums);
+            CalculateSum(dice, sums);
 
             if (modifier != 0)
             {
@@ -80,7 +146,7 @@ namespace DiceCalculator
         }
 
         // Calculate sum for currently showing sides and add sum to total
-        private static void Calculate(Die[] dice, Dictionary<int, int> sums)
+        private static void CalculateSum(Die[] dice, Dictionary<int, int> sums)
         {
             // Add sum of dice sides to running total
             int sum = dice.Sum(die => die.CurrentShowingSide);
@@ -135,6 +201,28 @@ namespace DiceCalculator
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Calculates chance of a specific sum or higher occurring.
+        /// </summary>
+        /// <param name="sums">Dictionary of sums that uses the sum as the Key and the count of how many times that sum has been rolled for the Value.</param>
+        /// <param name="combinations">The number of total sum combinations.</param>
+        /// <param name="desiredSum">The sum or higher to calculate the chance of occurring.</param>
+        /// <returns>The chance of the desired sum or higher occurring.</returns>
+        public static double CalculateChanceForSum(Dictionary<int, int> sums, double combinations, int desiredSum)
+        {
+            double chance = 0;
+
+            foreach (int sum in sums.Keys)
+            {
+                if (sum >= desiredSum)
+                {
+                    chance += (sums[sum] / combinations) * 100;
+                }
+            }
+
+            return chance;
         }
     }
 }
